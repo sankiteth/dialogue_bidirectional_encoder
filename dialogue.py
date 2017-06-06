@@ -123,12 +123,7 @@ class Seq2SeqModel():
 		)
 
 	def _init_decoder_tensors_padding_masking(self):
-		"""
-		During training, `decoder_targets`
-		and decoder logits. This means that their shapes should be compatible.
 
-		Here we do a bit of plumbing to set this up.
-		"""
 		with tf.name_scope('DecoderTrainFeeds'):
 			sequence_size, batch_size = tf.unstack(tf.shape(self.decoder_targets))
 
@@ -168,6 +163,7 @@ class Seq2SeqModel():
 			# ], dtype=tf.float32, name="loss_weights")
 
 	def _init_embeddings(self):
+
 		with tf.variable_scope("embedding") as scope:
 
 			# Uniform(-sqrt(3), sqrt(3)) has variance=1.
@@ -438,12 +434,6 @@ def get_batch(cur_batch, batch_size):
 	encoder_max_length    = max(enc_inputs_lengths)
 	decoder_max_length    = max(dec_inputs_lengths)
 
-	print("encoder_max_length")
-	print(encoder_max_length)
-
-	print("decoder_max_length")
-	print(decoder_max_length)
-
 	#input("Enter!")
 
 	# time major arrays, initialized with PAD values
@@ -454,12 +444,6 @@ def get_batch(cur_batch, batch_size):
 		for j, element in enumerate(seq):
 			encoder_inputs[j, i] = element[0]
 			decoder_inputs[j, i] = element[1]
-
-	print("enc_inputs_lengths")
-	print(enc_inputs_lengths)
-
-	print("dec_inputs_lengths")
-	print(dec_inputs_lengths)
 
 	return encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths
 
