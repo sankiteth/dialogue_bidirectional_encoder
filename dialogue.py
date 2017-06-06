@@ -511,6 +511,7 @@ if __name__ == '__main__':
 	dev_data   = FLAGS.dev_data
 	vocab_path = FLAGS.vocab_path
 	batch_size = FLAGS.batch_size
+	num_layers = FLAGS.num_layers
 
 	data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
 	train_set, train_bucket_lengths,_ = read_conversation_data(data_path, vocab_path)
@@ -526,8 +527,15 @@ if __name__ == '__main__':
 	tf.reset_default_graph()
 
 	with tf.Session() as session:
-		model = make_seq2seq_model(encoder_cell=LSTMCell(FLAGS.encoder_hidden_units),
-				decoder_cell=LSTMCell(2 * FLAGS.encoder_hidden_units),
+		def encoder_single_cell():
+			return LSTMCell(FLAGS.encoder_hidden_units)
+
+		def decoder_single_cell():
+			return LSTMCell(2 * FLAGS.encoder_hidden_units)
+
+
+		model = make_seq2seq_model(encoder_cell=encoder_single_cell(),
+				decoder_cell=decoder_single_cell(),
 				vocab_size=FLAGS.vocab_size,
 				embedding_size=FLAGS.encoder_hidden_units,
 				attention=True,
