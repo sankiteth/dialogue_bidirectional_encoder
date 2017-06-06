@@ -3,6 +3,7 @@
 import math
 import sys
 import os
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -379,6 +380,8 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 	for epoch in range(FLAGS.num_epochs):
 
+		start = time.time()
+
 		print("Epoch {0}".format(epoch))
 
 		np.random.shuffle(indices)
@@ -401,6 +404,8 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 				loss_track.append(l)
 
+		end = time.time()
+		print("Training time for epoch {0} = {1} mins".format(epoch, (end-start)/60))
 		
 		print("Stats on dev set:\n")
 		dev_loss = []
@@ -415,10 +420,10 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
 
 				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-				l = session.run([model.loss], fd)
+				l = session.run(model.loss, fd)
 				dev_loss.append(l)
 
-		print("Average loss on dev_set={0}", sum(dev_loss)/len(dev_loss))
+		print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
 
 		model.save(session)
 
