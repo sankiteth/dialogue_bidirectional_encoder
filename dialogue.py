@@ -399,7 +399,6 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				
 				_, l = session.run([model.train_op, model.loss], fd)
 				print(l)
-				input("Enter!")
 				loss_track.append(l)
 
 		
@@ -433,8 +432,6 @@ def get_batch(cur_batch, batch_size):
 	dec_inputs_lengths    = [len(seq[1]) for seq in cur_batch]
 	encoder_max_length    = max(enc_inputs_lengths)
 	decoder_max_length    = max(dec_inputs_lengths)
-
-	#input("Enter!")
 
 	# time major arrays, initialized with PAD values
 	encoder_inputs = np.ones(shape=[encoder_max_length, batch_size], dtype=np.int32) * data_utils.PAD_ID
