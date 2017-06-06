@@ -2,6 +2,7 @@
 
 import math
 import sys
+import os
 
 import numpy as np
 import tensorflow as tf
@@ -58,6 +59,9 @@ class Seq2SeqModel():
 		self.decoder_cell = decoder_cell
 
 		self._make_graph()
+
+		self.checkpoint_path = os.path.join(FLAGS.train_dir, "dialogue.ckpt")
+		self.saver = tf.train.Saver()
 
 	@property
 	def decoder_hidden_units(self):
@@ -311,16 +315,6 @@ class Seq2SeqModel():
 										  weights=self.loss_weights)
 		self.train_op = tf.train.AdamOptimizer().minimize(self.loss)
 
-	# def make_train_inputs(self, input_seq, target_seq):
-	#     inputs_, inputs_length_ = helpers.batch(input_seq)
-	#     targets_, targets_length_ = helpers.batch(target_seq)
-	#     return {
-	#         self.encoder_inputs: inputs_,
-	#         self.encoder_inputs_length: inputs_length_,
-	#         self.decoder_targets: targets_,
-	#         self.decoder_targets_length: targets_length_,
-	#     }
-
 	def make_train_inputs(self, input_seq, target_seq, input_seq_length, target_seq_length):
 		return {
 			self.encoder_inputs: input_seq,
@@ -329,18 +323,15 @@ class Seq2SeqModel():
 			self.decoder_targets_length: target_seq_length,
 		}
 
-	# def make_inference_inputs(self, input_seq):
-	#     inputs_, inputs_length_ = helpers.batch(input_seq)
-	#     return {
-	#         self.encoder_inputs: inputs_,
-	#         self.encoder_inputs_length: inputs_length_,
-	#     }
-
 	def make_inference_inputs(self, input_seq, input_seq_length):
 		return {
 			self.encoder_inputs: inputs_,
 			self.encoder_inputs_length: inputs_length_,
 		}
+
+	def save(self, sess):
+		self.saver.save(sess, self.checkpoint_path)
+
 
 def make_seq2seq_model(**kwargs):
 	args = dict(encoder_cell=LSTMCell(10),
@@ -388,60 +379,55 @@ def train_on_copy_task(session, model, length_from=3, length_to=8, vocab_lower=2
 def train(session, model, train_set, dev_set, batch_size=100):
 
 	loss_track = []
-	try:
-		indices = np.arange(len(_buckets))
 
-		for epoch in range(FLAGS.num_epochs):
+	indices = np.arange(len(_buckets))
 
-			print("Epoch {0}".format(epoch))
+	for epoch in range(FLAGS.num_epochs):
 
-			np.random.shuffle(indices)
-			print("indices:")
-			print(indices)
+		print("Epoch {0}".format(epoch))
 
-			for bucket_id in indices:
-				print("bucket_id")
-				print(bucket_id)
-				np.random.shuffle(train_set[bucket_id])
-				cur_train_set = train_set[bucket_id]
+		np.random.shuffle(indices)
 
-				# iterating on batches
-				for b in range( len(cur_train_set)//batch_size ):
+		for bucket_id in indices:
 
-					cur_batch = cur_train_set[b*batch_size : b*batch_size + batch_size]
+			np.random.shuffle(train_set[bucket_id])
+			cur_train_set = train_set[bucket_id]
 
-					encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
-					print("get_batch done")
+			# iterating on batches
+			for b in range( len(cur_train_set)//batch_size ):
 
-					fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-					print("make_train_inputs done")
-					
-					_, l = session.run([model.train_op, model.loss], fd)
-					print("loss={0}".format(l))
-					input("Enter!")
-					loss_track.append(l)
+				cur_batch = cur_train_set[b*batch_size : b*batch_size + batch_size]
 
-			
-			print("Stats on dev set:\n")
-			dev_loss = []
-			for bucket_id in indices:
+				encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
+
+				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 				
-				cur_dev_set = dev_set[bucket_id]
+				_, l = session.run([model.train_op, model.loss], fd)
+				print(l)
+				input("Enter!")
+				loss_track.append(l)
 
-				for b in range( len(cur_dev_set)//batch_size ):
+		
+		print("Stats on dev set:\n")
+		dev_loss = []
+		for bucket_id in indices:
+			
+			cur_dev_set = dev_set[bucket_id]
 
-					cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
+			for b in range( len(cur_dev_set)//batch_size ):
 
-					encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
+				cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
 
-					fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-					l = session.run([model.loss], fd)
-					dev_loss.append(l)
+				encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
 
-			print("Average loss on dev_set={0}", sum(dev_loss)/len(dev_loss))
+				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
+				l = session.run([model.loss], fd)
+				dev_loss.append(l)
 
-	except KeyboardInterrupt:
-		print('training interrupted')
+		print("Average loss on dev_set={0}", sum(dev_loss)/len(dev_loss))
+
+		model.save(session)
+
 
 	return loss_track
 

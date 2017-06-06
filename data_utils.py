@@ -29,7 +29,11 @@ _PAD = "_PAD"
 _GO = "_GO"
 _EOS = "_EOS"
 _UNK = "_UNK"
-_START_VOCAB = [_PAD, _GO, _EOS, _UNK]
+_PER = "<person>"
+_NUM = "<number>"
+_CON = "<continued_utterance>"
+
+_START_VOCAB = [_PAD, _EOS, _GO, _UNK, _PER, _NUM, _CON ]
 
 PAD_ID = 0
 EOS_ID = 1
@@ -54,7 +58,7 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size):
         tokens = txt.split()
         for w in tokens:
           word = w
-          if word in vocab:
+          if (word in vocab) and (word not in _START_VOCAB):
             vocab[word] += 1
           else:
             vocab[word] = 1
@@ -87,22 +91,6 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in words]
 
 def batch(inputs, max_sequence_length=None):
-    """
-    Args:
-        inputs:
-            list of sentences (integer lists)
-        max_sequence_length:
-            integer specifying how large should `max_time` dimension be.
-            If None, maximum sequence length would be used
-    
-    Outputs:
-        inputs_time_major:
-            input sentences transformed into time-major matrix 
-            (shape [max_time, batch_size]) padded with 0s
-        sequence_lengths:
-            batch-sized list of integers specifying amount of active 
-            time steps in each input sequence
-    """
     
     sequence_lengths = [len(seq) for seq in inputs]
     batch_size = len(inputs)
