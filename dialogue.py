@@ -398,7 +398,7 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 				
 				_, l = session.run([model.train_op, model.loss], fd)
-				print(l)
+
 				loss_track.append(l)
 
 		
@@ -437,10 +437,17 @@ def get_batch(cur_batch, batch_size):
 	encoder_inputs = np.ones(shape=[encoder_max_length, batch_size], dtype=np.int32) * data_utils.PAD_ID
 	decoder_inputs = np.ones(shape=[decoder_max_length, batch_size], dtype=np.int32) * data_utils.PAD_ID
 
-	for i, seq in enumerate(cur_batch):
-		for j, element in enumerate(seq):
-			encoder_inputs[j, i] = element[0]
-			decoder_inputs[j, i] = element[1]
+
+	# for each pair of encoder decoder inputs in current batch
+	for i, enc_dec_pair in enumerate(cur_batch):
+
+		# for each word in encoder input
+		for j, word in enumerate(enc_dec_pair[0]):
+			encoder_inputs[j, i] = word
+
+		# for each word in decoder input
+		for j, word in enumerate(enc_dec_pair[1]):
+			decoder_inputs[j, i] = word
 
 	return encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths
 
