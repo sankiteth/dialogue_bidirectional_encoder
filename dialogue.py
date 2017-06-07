@@ -20,8 +20,8 @@ import data_utils
 tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("batch_size"              , 4    , "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 32  , "Size of each model layer.")# number of dimensions in embedding space also same
 tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -62,30 +62,32 @@ class Seq2SeqModel():
 		self.encoder_cell = encoder_cell
 		self.decoder_cell = decoder_cell
 
-		# Sampled softmax loss if num of samples less than vocabulary size.
-		if num_samples > 0 and num_samples < self.vocab_size:
-			w_t = tf.get_variable("proj_w", [self.vocab_size, self.decoder_hidden_units], dtype=tf.float32)
-			w = tf.transpose(w_t)
-			b = tf.get_variable("proj_b", [self.vocab_size], dtype=tf.float32)
-			output_projection = (w, b)
+		# # Sampled softmax loss if num of samples less than vocabulary size.
+		# if num_samples > 0 and num_samples < self.vocab_size:
+		# 	w_t = tf.get_variable("proj_w", [self.vocab_size, self.decoder_hidden_units], dtype=tf.float32)
+		# 	w = tf.transpose(w_t)
+		# 	b = tf.get_variable("proj_b", [self.vocab_size], dtype=tf.float32)
+		# 	output_projection = (w, b)
 
-			# We need to compute the sampled_softmax_loss using 32bit floats to
-			# avoid numerical instabilities.
-			def sampled_softmax_loss(labels, logits):
-				labels = tf.reshape(labels, [-1, 1])
+		# 	# We need to compute the sampled_softmax_loss using 32bit floats to
+		# 	# avoid numerical instabilities.
+		# 	def sampled_softmax_loss(labels, logits):
+		# 		labels = tf.reshape(labels, [-1, 1])
 				
-				return tf.nn.sampled_softmax_loss(
-						weights=w_t,
-						biases=b,
-						labels=labels,
-						inputs=logits,
-						num_sampled=num_samples,
-						num_classes=self.vocab_size)
+		# 		return tf.nn.sampled_softmax_loss(
+		# 				weights=w_t,
+		# 				biases=b,
+		# 				labels=labels,
+		# 				inputs=logits,
+		# 				num_sampled=num_samples,
+		# 				num_classes=self.vocab_size)
 
-			self.loss_fn = sampled_softmax_loss
+		# 	self.loss_fn = sampled_softmax_loss
 
-		else:
-			self.loss_fn = None
+		# else:
+		# 	self.loss_fn = None
+
+		self.loss_fn = None
 
 		self._make_graph()
 
@@ -113,18 +115,6 @@ class Seq2SeqModel():
 		self._init_decoder()
 
 		self._init_optimizer()
-
-	def _init_debug_inputs(self):
-		""" Everything is time-major """
-		x = [[5, 6, 7],
-			 [7, 6, 0],
-			 [0, 7, 0]]
-		xl = [2, 3, 1]
-		self.encoder_inputs = tf.constant(x, dtype=tf.int32, name='encoder_inputs')
-		self.encoder_inputs_length = tf.constant(xl, dtype=tf.int32, name='encoder_inputs_length')
-
-		self.decoder_targets = tf.constant(x, dtype=tf.int32, name='decoder_targets')
-		self.decoder_targets_length = tf.constant(xl, dtype=tf.int32, name='decoder_targets_length')
 
 	def _init_placeholders(self):
 		""" Everything is time-major """
@@ -263,6 +253,7 @@ class Seq2SeqModel():
 
 	def _init_decoder(self):
 		with tf.variable_scope("Decoder") as scope:
+
 			def output_fn(outputs):
 				return tf.contrib.layers.linear(outputs, self.vocab_size, scope=scope)
 
@@ -329,8 +320,10 @@ class Seq2SeqModel():
 				)
 			)
 
+			self.decoder_outputs_train = tf.nn.dropout(self.decoder_outputs_train, 0.5)
+
 			self.decoder_logits_train = output_fn(self.decoder_outputs_train)
-			self.decoder_prediction_train = tf.argmax(self.decoder_logits_train, axis=-1, name='decoder_prediction_train')
+			#self.decoder_prediction_train = tf.argmax(self.decoder_logits_train, axis=-1, name='decoder_prediction_train')
 
 			# reusing the scope of training to use the same variables for inference
 			scope.reuse_variables()
@@ -353,7 +346,7 @@ class Seq2SeqModel():
 		self.loss = seq2seq.sequence_loss(logits=logits,
 											targets=targets,
 											weights=self.loss_weights,
-											softmax_loss_function=None)
+											softmax_loss_function=self.loss_fn)
 
 		self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
@@ -397,37 +390,37 @@ def make_seq2seq_model(**kwargs):
 	args.update(kwargs)
 	return Seq2SeqModel(**args)
 
-def train_on_copy_task(session, model, length_from=3, length_to=8, vocab_lower=2, vocab_upper=10, batch_size=100, max_batches=5000, batches_in_epoch=5, verbose=True):
+# def train_on_copy_task(session, model, length_from=3, length_to=8, vocab_lower=2, vocab_upper=10, batch_size=100, max_batches=5000, batches_in_epoch=5, verbose=True):
 
-	batches = helpers.random_sequences(length_from=length_from, length_to=length_to,
-									   vocab_lower=vocab_lower, vocab_upper=vocab_upper,
-									   batch_size=batch_size)
-	loss_track = []
-	try:
-		for batch in range(max_batches+1):
-			batch_data = next(batches)
-			fd = model.make_train_inputs(batch_data, batch_data)
-			_, l = session.run([model.train_op, model.loss], fd)
-			loss_track.append(l)
+# 	batches = helpers.random_sequences(length_from=length_from, length_to=length_to,
+# 									   vocab_lower=vocab_lower, vocab_upper=vocab_upper,
+# 									   batch_size=batch_size)
+# 	loss_track = []
+# 	try:
+# 		for batch in range(max_batches+1):
+# 			batch_data = next(batches)
+# 			fd = model.make_train_inputs(batch_data, batch_data)
+# 			_, l = session.run([model.train_op, model.loss], fd)
+# 			loss_track.append(l)
 
-			if verbose:
-				if batch == 0 or batch % batches_in_epoch == 0:
-					print('batch {}'.format(batch))
-					print('  minibatch loss: {}'.format(session.run(model.loss, fd)))
-					for i, (e_in, dt_pred) in enumerate(zip(
-							fd[model.encoder_inputs].T,
-							session.run(model.decoder_prediction_train, fd).T
-						)):
-						print('  sample {}:'.format(i + 1))
-						print('    enc input           > {}'.format(e_in))
-						print('    dec train predicted > {}'.format(dt_pred))
-						if i >= 2:
-							break
-					print()
-	except KeyboardInterrupt:
-		print('training interrupted')
+# 			if verbose:
+# 				if batch == 0 or batch % batches_in_epoch == 0:
+# 					print('batch {}'.format(batch))
+# 					print('  minibatch loss: {}'.format(session.run(model.loss, fd)))
+# 					for i, (e_in, dt_pred) in enumerate(zip(
+# 							fd[model.encoder_inputs].T,
+# 							session.run(model.decoder_prediction_train, fd).T
+# 						)):
+# 						print('  sample {}:'.format(i + 1))
+# 						print('    enc input           > {}'.format(e_in))
+# 						print('    dec train predicted > {}'.format(dt_pred))
+# 						if i >= 2:
+# 							break
+# 					print()
+# 	except KeyboardInterrupt:
+# 		print('training interrupted')
 
-	return loss_track
+# 	return loss_track
 
 def train(session, model, train_set, dev_set, batch_size=100):
 
