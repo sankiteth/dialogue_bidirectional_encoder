@@ -222,7 +222,7 @@ class Seq2SeqModel():
 			self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
 			#self.encoder_outputs = encoder_fw_outputs
 
-			 if isinstance(encoder_fw_state, LSTMStateTuple):
+			if isinstance(encoder_fw_state, LSTMStateTuple):
 				encoder_state_c = tf.concat(
 					(encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
 				encoder_state_h = tf.concat(
