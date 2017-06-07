@@ -20,8 +20,8 @@ import data_utils
 tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size"              , 4    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 32  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
 tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
