@@ -63,7 +63,6 @@ class Seq2SeqModel():
 
 		self._make_graph()
 
-		self.checkpoint_path = os.path.join(FLAGS.train_dir, "dialogue.ckpt")
 		self.saver = tf.train.Saver()
 
 	@property
@@ -351,7 +350,9 @@ class Seq2SeqModel():
 			self.encoder_inputs_length: inputs_length_,
 		}
 
-	def save(self, sess):
+	def save(self, sess, epoch):
+		file_name = "dialogue_epoch_" + str(epoch) + ".ckpt"
+		self.checkpoint_path = os.path.join(FLAGS.train_dir, file_name)
 		self.saver.save(sess, self.checkpoint_path)
 
 
@@ -463,7 +464,7 @@ def train(session, model, train_set, dev_set, batch_size=100):
 		print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
 		sys.stdout.flush()
 
-		model.save(session)
+		model.save(session, epoch)
 
 
 	return loss_track
