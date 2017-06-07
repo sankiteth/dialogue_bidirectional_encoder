@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_lookup_unique
-from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
+from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell, MultiRNNCell, DropoutWrapper, BasicLSTMCell
 from tensorflow.python.platform import gfile
 
 import helpers
@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate d
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
-tf.app.flags.DEFINE_integer("num_layers"              , 3     , "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 
@@ -44,7 +44,7 @@ class Seq2SeqModel():
 	GO  = 2
 	UNK = 3
 
-	def __init__(self, encoder_cell, decoder_cell, vocab_size, embedding_size,
+	def __init__(self, encoder_cell, decoder_cell, vocab_size, embedding_size, learning_rate, max_gradient_norm,
 				 bidirectional=True,
 				 attention=False,
 				 debug=False):
@@ -54,6 +54,9 @@ class Seq2SeqModel():
 
 		self.vocab_size = vocab_size
 		self.embedding_size = embedding_size
+
+		self.learning_rate = learning_rate
+		self.max_gradient_norm = max_gradient_norm
 
 		self.encoder_cell = encoder_cell
 		self.decoder_cell = decoder_cell
@@ -196,10 +199,12 @@ class Seq2SeqModel():
 	def _init_bidirectional_encoder(self):
 		with tf.variable_scope("BidirectionalEncoder") as scope:
 
+			#encoder_outputs are independent of num_layers
+			#encoder_states depend on num_layers
 			((encoder_fw_outputs,
-			  encoder_bw_outputs),
-			 (encoder_fw_state,
-			  encoder_bw_state)) = (
+				encoder_bw_outputs),
+				(encoder_fw_state,
+				encoder_bw_state)) = (
 				tf.nn.bidirectional_dynamic_rnn(cell_fw=self.encoder_cell,
 												cell_bw=self.encoder_cell,
 												inputs=self.encoder_inputs_embedded,
@@ -208,10 +213,17 @@ class Seq2SeqModel():
 												dtype=tf.float32)
 				)
 
+
+			# encoder_fw_outputs=[?, ?, ], encoder_fw_state=[?,32]
+			# print(type(encoder_fw_outputs))
+			# print(encoder_fw_outputs.get_shape())
+			# print(encoder_fw_state.get_shape())
+
+
 			self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
+			#self.encoder_outputs = encoder_fw_outputs
 
-			if isinstance(encoder_fw_state, LSTMStateTuple):
-
+			 if isinstance(encoder_fw_state, LSTMStateTuple):
 				encoder_state_c = tf.concat(
 					(encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
 				encoder_state_h = tf.concat(
@@ -220,6 +232,9 @@ class Seq2SeqModel():
 
 			elif isinstance(encoder_fw_state, tf.Tensor):
 				self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
+
+				self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
+			#self.encoder_state = encoder_fw_state
 
 	def _init_decoder(self):
 		with tf.variable_scope("Decoder") as scope:
@@ -241,6 +256,8 @@ class Seq2SeqModel():
 
 				# attention_states: size [batch_size, max_time, num_units]
 				attention_states = tf.transpose(self.encoder_outputs, [1, 0, 2])
+
+				#attention_states = tf.zeros([batch_size, 1, self.decoder_hidden_units])
 
 				(attention_keys,
 				attention_values,
@@ -290,6 +307,7 @@ class Seq2SeqModel():
 			self.decoder_logits_train = output_fn(self.decoder_outputs_train)
 			self.decoder_prediction_train = tf.argmax(self.decoder_logits_train, axis=-1, name='decoder_prediction_train')
 
+			# reusing the scope of training to use the same variables for inference
 			scope.reuse_variables()
 
 			(self.decoder_logits_inference,
@@ -309,7 +327,15 @@ class Seq2SeqModel():
 		targets = tf.transpose(self.decoder_train_targets, [1, 0])
 		self.loss = seq2seq.sequence_loss(logits=logits, targets=targets,
 										  weights=self.loss_weights)
-		self.train_op = tf.train.AdamOptimizer().minimize(self.loss)
+
+		self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
+
+		self.gradients = self.optimizer.compute_gradients(self.loss)
+
+		self.capped_gradients = [( tf.clip_by_value( grad, -self.max_gradient_norm, self.max_gradient_norm ), variable ) for 
+																		grad, variable in self.gradients if grad is not None]
+
+		self.train_op = self.optimizer.apply_gradients(self.capped_gradients)
 
 	def make_train_inputs(self, input_seq, target_seq, input_seq_length, target_seq_length):
 		return {
@@ -334,6 +360,8 @@ def make_seq2seq_model(**kwargs):
 				decoder_cell=LSTMCell(20),
 				vocab_size=10,
 				embedding_size=10,
+				learning_rate=0.001,
+				max_gradient_norm=5.0,
 				attention=True,
 				bidirectional=True,
 				debug=False)
@@ -382,7 +410,8 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 		start = time.time()
 
-		print("Epoch {0}".format(epoch))
+		print("Epoch {0} started".format(epoch))
+		sys.stdout.flush()
 
 		np.random.shuffle(indices)
 
@@ -401,13 +430,21 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 				
 				_, l = session.run([model.train_op, model.loss], fd)
-
+				# print(l)
+				# input("Enter!")
 				loss_track.append(l)
 
+			print("Bucket {0} finished".format(bucket_id))
+			sys.stdout.flush()
+
 		end = time.time()
+		print("Epoch {0} finished".format(epoch))
 		print("Training time for epoch {0} = {1} mins".format(epoch, (end-start)/60))
+		sys.stdout.flush()
 		
 		print("Stats on dev set:\n")
+		sys.stdout.flush()
+
 		dev_loss = []
 		for bucket_id in indices:
 			
@@ -424,6 +461,7 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				dev_loss.append(l)
 
 		print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
+		sys.stdout.flush()
 
 		model.save(session)
 
@@ -506,12 +544,14 @@ def read_conversation_data(data_path,vocabulary_path):
 if __name__ == '__main__':
 
 	tracks = {}
-	print("Training")
+	print("Training started")
 	data_path  = FLAGS.data_path
 	dev_data   = FLAGS.dev_data
 	vocab_path = FLAGS.vocab_path
 	batch_size = FLAGS.batch_size
 	num_layers = FLAGS.num_layers
+	learning_rate = FLAGS.learning_rate
+	max_gradient_norm = FLAGS.max_gradient_norm
 
 	data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
 	train_set, train_bucket_lengths,_ = read_conversation_data(data_path, vocab_path)
@@ -531,13 +571,22 @@ if __name__ == '__main__':
 			return LSTMCell(FLAGS.encoder_hidden_units)
 
 		def decoder_single_cell():
-			return LSTMCell(2 * FLAGS.encoder_hidden_units)
+			return LSTMCell(2*FLAGS.encoder_hidden_units)
+
+		if num_layers > 1:
+			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
+			decoder_cell = MultiRNNCell([decoder_single_cell() for _ in range(num_layers)])
+		else:
+			encoder_cell = encoder_single_cell()
+			decoder_cell = decoder_single_cell()
 
 
-		model = make_seq2seq_model(encoder_cell=encoder_single_cell(),
-				decoder_cell=decoder_single_cell(),
+		model = make_seq2seq_model(encoder_cell=encoder_cell,
+				decoder_cell=decoder_cell,
 				vocab_size=FLAGS.vocab_size,
 				embedding_size=FLAGS.encoder_hidden_units,
+				learning_rate=learning_rate,
+				max_gradient_norm=max_gradient_norm,
 				attention=True,
 				bidirectional=True,
 				debug=False)
