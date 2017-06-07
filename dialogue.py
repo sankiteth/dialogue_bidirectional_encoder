@@ -20,8 +20,8 @@ import data_utils
 tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size"              , 10    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 32  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")# number of dimensions in embedding space also same
 tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -459,8 +459,8 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 				
 				_, l = session.run([model.train_op, model.loss], fd)
-				print(l)
-				input("Enter!")
+				# print(l)
+				# input("Enter!")
 				# loss_track.append(l)
 
 			print("Bucket {0} finished".format(bucket_id))
