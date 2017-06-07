@@ -21,8 +21,8 @@ tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate."
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")# number of dimensions in embedding space also same
-tf.app.flags.DEFINE_integer("num_layers"              , 3     , "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 
@@ -611,10 +611,10 @@ if __name__ == '__main__':
 
 	with tf.Session() as session:
 		def encoder_single_cell():
-			return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
+			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=0.75) 
 
 		def decoder_single_cell():
-			return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
+			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=0.75) 
 
 		if num_layers > 1:
 			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -627,7 +627,7 @@ if __name__ == '__main__':
 		model = make_seq2seq_model(encoder_cell=encoder_cell,
 				decoder_cell=decoder_cell,
 				vocab_size=FLAGS.vocab_size,
-				embedding_size=FLAGS.encoder_hidden_units,
+				embedding_size=100,#FLAGS.encoder_hidden_units,
 				learning_rate=learning_rate,
 				max_gradient_norm=max_gradient_norm,
 				attention=True,
