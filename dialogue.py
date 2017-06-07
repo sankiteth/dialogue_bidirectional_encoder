@@ -20,8 +20,8 @@ import data_utils
 tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("batch_size"              , 10    , "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 32  , "Size of each model layer.")# number of dimensions in embedding space also same
 tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -45,9 +45,10 @@ class Seq2SeqModel():
 	UNK = 3
 
 	def __init__(self, encoder_cell, decoder_cell, vocab_size, embedding_size, learning_rate, max_gradient_norm,
-				 bidirectional=True,
-				 attention=False,
-				 debug=False):
+				num_samples=512,
+				bidirectional=True,
+				attention=False,
+				debug=False):
 		self.debug = debug
 		self.bidirectional = bidirectional
 		self.attention = attention
@@ -60,6 +61,31 @@ class Seq2SeqModel():
 
 		self.encoder_cell = encoder_cell
 		self.decoder_cell = decoder_cell
+
+		# Sampled softmax loss if num of samples less than vocabulary size.
+		if num_samples > 0 and num_samples < self.vocab_size:
+			w_t = tf.get_variable("proj_w", [self.vocab_size, self.decoder_hidden_units], dtype=tf.float32)
+			w = tf.transpose(w_t)
+			b = tf.get_variable("proj_b", [self.vocab_size], dtype=tf.float32)
+			output_projection = (w, b)
+
+			# We need to compute the sampled_softmax_loss using 32bit floats to
+			# avoid numerical instabilities.
+			def sampled_softmax_loss(labels, logits):
+				labels = tf.reshape(labels, [-1, 1])
+				
+				return tf.nn.sampled_softmax_loss(
+						weights=w_t,
+						biases=b,
+						labels=labels,
+						inputs=logits,
+						num_sampled=num_samples,
+						num_classes=self.vocab_size)
+
+			self.loss_fn = sampled_softmax_loss
+
+		else:
+			self.loss_fn = None
 
 		self._make_graph()
 
@@ -324,8 +350,10 @@ class Seq2SeqModel():
 	def _init_optimizer(self):
 		logits = tf.transpose(self.decoder_logits_train, [1, 0, 2])
 		targets = tf.transpose(self.decoder_train_targets, [1, 0])
-		self.loss = seq2seq.sequence_loss(logits=logits, targets=targets,
-										  weights=self.loss_weights)
+		self.loss = seq2seq.sequence_loss(logits=logits,
+											targets=targets,
+											weights=self.loss_weights,
+											softmax_loss_function=None)
 
 		self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
@@ -431,38 +459,59 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 				
 				_, l = session.run([model.train_op, model.loss], fd)
-				# print(l)
-				# input("Enter!")
-				loss_track.append(l)
+				print(l)
+				input("Enter!")
+				# loss_track.append(l)
 
 			print("Bucket {0} finished".format(bucket_id))
 			sys.stdout.flush()
+
+			print("Stats on dev set:\n")
+			sys.stdout.flush()
+
+			for bucket_id in indices:
+				dev_loss = []
+				
+				cur_dev_set = dev_set[bucket_id]
+
+				for b in range( len(cur_dev_set)//batch_size ):
+
+					cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
+
+					encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
+
+					fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
+					l = session.run(model.loss, fd)
+					dev_loss.append(l)
+
+				print("Average loss for bucket{0} on dev_set={1}".format(bucket_id, sum(dev_loss)/len(dev_loss) ))
+				sys.stdout.flush()
 
 		end = time.time()
 		print("Epoch {0} finished".format(epoch))
 		print("Training time for epoch {0} = {1} mins".format(epoch, (end-start)/60))
 		sys.stdout.flush()
 		
-		print("Stats on dev set:\n")
-		sys.stdout.flush()
+		# print("Stats on dev set:\n")
+		# sys.stdout.flush()
 
-		dev_loss = []
-		for bucket_id in indices:
+		# dev_loss = []
+		# for bucket_id in indices:
 			
-			cur_dev_set = dev_set[bucket_id]
+		# 	cur_dev_set = dev_set[bucket_id]
 
-			for b in range( len(cur_dev_set)//batch_size ):
+		# 	for b in range( len(cur_dev_set)//batch_size ):
 
-				cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
+		# 		cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
 
-				encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
+		# 		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
 
-				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-				l = session.run(model.loss, fd)
-				dev_loss.append(l)
+		# 		fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
+		# 		l = session.run(model.loss, fd)
+		# 		dev_loss.append(l)
 
-		print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
-		sys.stdout.flush()
+		# print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
+		# sys.stdout.flush()
 
 		model.save(session, epoch)
 
@@ -569,10 +618,10 @@ if __name__ == '__main__':
 
 	with tf.Session() as session:
 		def encoder_single_cell():
-			return LSTMCell(FLAGS.encoder_hidden_units)
+			return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
 
 		def decoder_single_cell():
-			return LSTMCell(2*FLAGS.encoder_hidden_units)
+			return DropoutWrapper( GRUCell(2*FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
 
 		if num_layers > 1:
 			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
