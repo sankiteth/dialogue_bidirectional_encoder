@@ -21,8 +21,8 @@ tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate."
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
-tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("num_layers"              , 3     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 
@@ -232,24 +232,24 @@ class Seq2SeqModel():
 			# encoder_fw_outputs=[?, ?, ], encoder_fw_state=[?,32]
 			# print(type(encoder_fw_outputs))
 			# print(encoder_fw_outputs.get_shape())
-			# print(encoder_fw_state.get_shape())
+			# print(len(encoder_fw_state))
+			# print(encoder_fw_state[0].get_shape())
 
 
-			self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
-			#self.encoder_outputs = encoder_fw_outputs
+			#self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
+			self.encoder_outputs = encoder_fw_outputs
 
-			if isinstance(encoder_fw_state, LSTMStateTuple):
-				encoder_state_c = tf.concat(
-					(encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
-				encoder_state_h = tf.concat(
-					(encoder_fw_state.h, encoder_bw_state.h), 1, name='bidirectional_concat_h')
-				self.encoder_state = LSTMStateTuple(c=encoder_state_c, h=encoder_state_h)
+			# if isinstance(encoder_fw_state, LSTMStateTuple):
+			# 	encoder_state_c = tf.concat(
+			# 		(encoder_fw_state.c, encoder_bw_state.c), 1, name='bidirectional_concat_c')
+			# 	encoder_state_h = tf.concat(
+			# 		(encoder_fw_state.h, encoder_bw_state.h), 1, name='bidirectional_concat_h')
+			# 	self.encoder_state = LSTMStateTuple(c=encoder_state_c, h=encoder_state_h)
 
-			elif isinstance(encoder_fw_state, tf.Tensor):
-				self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
+			# elif isinstance(encoder_fw_state, tf.Tensor):
+			# 	self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
 
-				self.encoder_state = tf.concat((encoder_fw_state, encoder_bw_state), 1, name='bidirectional_concat')
-			#self.encoder_state = encoder_fw_state
+			self.encoder_state = encoder_fw_state
 
 	def _init_decoder(self):
 		with tf.variable_scope("Decoder") as scope:
@@ -528,7 +528,7 @@ def get_batch(cur_batch, batch_size):
 	for i, enc_dec_pair in enumerate(cur_batch):
 
 		# for each word in encoder input
-		for j, word in enumerate(enc_dec_pair[0]):
+		for j, word in enumerate( list( reversed(enc_dec_pair[0]) ) ):
 			encoder_inputs[j, i] = word
 
 		# for each word in decoder input
@@ -614,7 +614,7 @@ if __name__ == '__main__':
 			return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
 
 		def decoder_single_cell():
-			return DropoutWrapper( GRUCell(2*FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
+			return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=0.5, output_keep_prob=0.5) 
 
 		if num_layers > 1:
 			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
