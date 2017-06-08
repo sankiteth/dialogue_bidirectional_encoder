@@ -69,7 +69,7 @@ class Seq2SeqModel():
 
 		self._make_graph()
 
-		self.saver = tf.train.Saver()
+		self.saver = tf.train.Saver(max_to_keep=10000)
 
 	@property
 	def decoder_hidden_units(self):
@@ -595,13 +595,27 @@ if __name__ == '__main__':
 					bidirectional=True,
 					debug=False)
 
-			ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-			if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
-				print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-				model.saver.restore(session, ckpt.model_checkpoint_path)
-			else:
-				print("Created model with fresh parameters.")
-				session.run(tf.global_variables_initializer())
+
+			# file_name = "dialogue_epoch_13.ckpt"
+			# model_path = os.path.join("./train_dir", file_name)
+
+			# ckpt = tf.train.get_checkpoint_state("./train_dir/", latest_filename=file_name)
+
+			# if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
+			# 	print("Reading model parameters from {0}".format(model_path))
+			# 	model.saver.restore(session, "./train_dir/dialogue_epoch_13.ckpt")
+			# 	model.saver.restore(session, ckpt.model_checkpoint_path)
+			# else:
+			# 	print("Trained model not found. Exiting!")
+			# 	sys.exit()
+
+			try:
+				print("Reading model parameters from {0}".format("./train_dir/dialogue_epoch_13.ckpt"))
+				model.saver.restore(session, "./train_dir/dialogue_epoch_13.ckpt")
+
+			except:
+				print("Trained model not found. Exiting!")
+				sys.exit()
 
 
 
@@ -612,7 +626,7 @@ if __name__ == '__main__':
 			while sentence:
 
 				token_ids = data_utils.sentence_to_token_ids(sentence, vocab)
-				print(token_ids)
+				#print(token_ids)
 			
 				encoder_inputs, enc_inputs_lengths = prepare_inf_input([token_ids], 1)
 				# print(encoder_inputs)
