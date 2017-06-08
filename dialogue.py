@@ -298,7 +298,7 @@ class Seq2SeqModel():
 				)
 			)
 
-			self.decoder_outputs_train = tf.nn.dropout(self.decoder_outputs_train, 0.5)
+			self.decoder_outputs_train = tf.nn.dropout(self.decoder_outputs_train, _keep_prob)
 
 			self.decoder_logits_train = output_fn(self.decoder_outputs_train)
 			#self.decoder_prediction_train = tf.argmax(self.decoder_logits_train, axis=-1, name='decoder_prediction_train')
@@ -342,19 +342,20 @@ class Seq2SeqModel():
 			self.encoder_inputs_length: input_seq_length,
 			self.decoder_targets: target_seq,
 			self.decoder_targets_length: target_seq_length,
+			_keep_prob: FLAGS.keep_prob
 		}
 
 	def make_inference_inputs(self, input_seq, input_seq_length=None):
 		return {
 			self.encoder_inputs: input_seq,
 			self.encoder_inputs_length: input_seq_length,
+			_keep_prob: 1.0
 		}
 
 	def save(self, sess, epoch):
 		file_name = "dialogue_epoch_" + str(epoch) + ".ckpt"
 		self.checkpoint_path = os.path.join(FLAGS.train_dir, file_name)
 		self.saver.save(sess, self.checkpoint_path)
-
 
 def make_seq2seq_model(**kwargs):
 	args = dict(encoder_cell=LSTMCell(10),
@@ -559,8 +560,6 @@ if __name__ == '__main__':
 	learning_rate     = FLAGS.learning_rate
 	max_gradient_norm = FLAGS.max_gradient_norm
 	embedding_size    = FLAGS.embedding_size
-	keep_prob         = FLAGS.keep_prob
-
 
 	# conversation with model
 	if 'test' in sys.argv:
@@ -571,11 +570,16 @@ if __name__ == '__main__':
 
 		with tf.Session() as session:
 
+			_keep_prob = tf.placeholder(
+							dtype=tf.float32,
+							name='keep_prob',
+						)
+
 			def encoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -610,8 +614,8 @@ if __name__ == '__main__':
 			# 	sys.exit()
 
 			try:
-				print("Reading model parameters from {0}".format("./train_dir/dialogue_epoch_13.ckpt"))
-				model.saver.restore(session, "./train_dir/dialogue_epoch_13.ckpt")
+				print("Reading model parameters from {0}".format("./train_dir/dialogue_epoch_15.ckpt"))
+				model.saver.restore(session, "./train_dir/dialogue_epoch_15.ckpt")
 
 			except:
 				print("Trained model not found. Exiting!")
@@ -667,11 +671,17 @@ if __name__ == '__main__':
 		tf.reset_default_graph()
 
 		with tf.Session() as session:
+
+			_keep_prob = tf.placeholder(
+							dtype=tf.float32,
+							name='keep_prob',
+						)
+
 			def encoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
