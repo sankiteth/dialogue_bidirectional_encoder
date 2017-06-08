@@ -21,7 +21,9 @@ tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate."
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")# number of dimensions in embedding space also same
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")
+tf.app.flags.DEFINE_integer("embedding_size"          , 100   , "Number of dimensions in embedding space.")
+tf.app.flags.DEFINE_integer("keep_prob"               , 0.75  , "input_keep_prob for a single RNN cell.")
 tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -588,13 +590,16 @@ if __name__ == '__main__':
 
 	tracks = {}
 	print("Training started")
-	data_path  = FLAGS.data_path
-	dev_data   = FLAGS.dev_data
-	vocab_path = FLAGS.vocab_path
-	batch_size = FLAGS.batch_size
-	num_layers = FLAGS.num_layers
-	learning_rate = FLAGS.learning_rate
+	data_path         = FLAGS.data_path
+	dev_data          = FLAGS.dev_data
+	vocab_path        = FLAGS.vocab_path
+	batch_size        = FLAGS.batch_size
+	num_layers        = FLAGS.num_layers
+	learning_rate     = FLAGS.learning_rate
 	max_gradient_norm = FLAGS.max_gradient_norm
+	embedding_size    = FLAGS.embedding_size
+	keep_prob         = FLAGS.keep_prob
+
 
 	data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
 	train_set, train_bucket_lengths,_ = read_conversation_data(data_path, vocab_path)
@@ -611,10 +616,10 @@ if __name__ == '__main__':
 
 	with tf.Session() as session:
 		def encoder_single_cell():
-			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=0.75) 
+			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
 
 		def decoder_single_cell():
-			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=0.75) 
+			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
 
 		if num_layers > 1:
 			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -627,7 +632,7 @@ if __name__ == '__main__':
 		model = make_seq2seq_model(encoder_cell=encoder_cell,
 				decoder_cell=decoder_cell,
 				vocab_size=FLAGS.vocab_size,
-				embedding_size=100,#FLAGS.encoder_hidden_units,
+				embedding_size=embedding_size,
 				learning_rate=learning_rate,
 				max_gradient_norm=max_gradient_norm,
 				attention=True,
