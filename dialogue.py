@@ -27,6 +27,7 @@ tf.app.flags.DEFINE_integer("keep_prob"               , 0.75  , "input_keep_prob
 tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
+tf.app.flags.DEFINE_integer("max_inf_target_len"      , 100   , "Max length of targets in the inference")
 
 tf.app.flags.DEFINE_string("data_path" , "data/Training_Shuffled_Dataset.txt", "Data directory")#done
 tf.app.flags.DEFINE_string("vocab_path", "data/Vocab_file.txt", "Data directory")#done
@@ -63,31 +64,6 @@ class Seq2SeqModel():
 
 		self.encoder_cell = encoder_cell
 		self.decoder_cell = decoder_cell
-
-		# # Sampled softmax loss if num of samples less than vocabulary size.
-		# if num_samples > 0 and num_samples < self.vocab_size:
-		# 	w_t = tf.get_variable("proj_w", [self.vocab_size, self.decoder_hidden_units], dtype=tf.float32)
-		# 	w = tf.transpose(w_t)
-		# 	b = tf.get_variable("proj_b", [self.vocab_size], dtype=tf.float32)
-		# 	output_projection = (w, b)
-
-		# 	# We need to compute the sampled_softmax_loss using 32bit floats to
-		# 	# avoid numerical instabilities.
-		# 	def sampled_softmax_loss(labels, logits):
-		# 		labels = tf.reshape(labels, [-1, 1])
-				
-		# 		return tf.nn.sampled_softmax_loss(
-		# 				weights=w_t,
-		# 				biases=b,
-		# 				labels=labels,
-		# 				inputs=logits,
-		# 				num_sampled=num_samples,
-		# 				num_classes=self.vocab_size)
-
-		# 	self.loss_fn = sampled_softmax_loss
-
-		# else:
-		# 	self.loss_fn = None
 
 		self.loss_fn = None
 
@@ -267,7 +243,7 @@ class Seq2SeqModel():
 					embeddings=self.embedding_matrix,
 					start_of_sequence_id=self.GO,
 					end_of_sequence_id=self.EOS,
-					maximum_length=tf.reduce_max(self.decoder_train_length),
+					maximum_length=FLAGS.max_inf_target_len,
 					num_decoder_symbols=self.vocab_size,
 				)
 			else:
@@ -305,7 +281,7 @@ class Seq2SeqModel():
 					embeddings=self.embedding_matrix,
 					start_of_sequence_id=self.GO,
 					end_of_sequence_id=self.EOS,
-					maximum_length=tf.reduce_max(self.decoder_train_length),
+					maximum_length= FLAGS.max_inf_target_len, #tf.reduce_max(self.encoder_inputs_length),
 					num_decoder_symbols=self.vocab_size,
 				)
 
@@ -331,8 +307,8 @@ class Seq2SeqModel():
 			scope.reuse_variables()
 
 			(self.decoder_logits_inference,
-			 self.decoder_state_inference,
-			 self.decoder_context_state_inference) = (
+			self.decoder_state_inference,
+			self.decoder_context_state_inference) = (
 				seq2seq.dynamic_rnn_decoder(
 					cell=self.decoder_cell,
 					decoder_fn=decoder_fn_inference,
@@ -340,6 +316,7 @@ class Seq2SeqModel():
 					scope=scope,
 				)
 			)
+
 			self.decoder_prediction_inference = tf.argmax(self.decoder_logits_inference, axis=-1, name='decoder_prediction_inference')
 
 	def _init_optimizer(self):
@@ -367,10 +344,10 @@ class Seq2SeqModel():
 			self.decoder_targets_length: target_seq_length,
 		}
 
-	def make_inference_inputs(self, input_seq, input_seq_length):
+	def make_inference_inputs(self, input_seq, input_seq_length=None):
 		return {
-			self.encoder_inputs: inputs_,
-			self.encoder_inputs_length: inputs_length_,
+			self.encoder_inputs: input_seq,
+			self.encoder_inputs_length: input_seq_length,
 		}
 
 	def save(self, sess, epoch):
@@ -389,40 +366,10 @@ def make_seq2seq_model(**kwargs):
 				attention=True,
 				bidirectional=True,
 				debug=False)
+
 	args.update(kwargs)
-	return Seq2SeqModel(**args)
-
-# def train_on_copy_task(session, model, length_from=3, length_to=8, vocab_lower=2, vocab_upper=10, batch_size=100, max_batches=5000, batches_in_epoch=5, verbose=True):
-
-# 	batches = helpers.random_sequences(length_from=length_from, length_to=length_to,
-# 									   vocab_lower=vocab_lower, vocab_upper=vocab_upper,
-# 									   batch_size=batch_size)
-# 	loss_track = []
-# 	try:
-# 		for batch in range(max_batches+1):
-# 			batch_data = next(batches)
-# 			fd = model.make_train_inputs(batch_data, batch_data)
-# 			_, l = session.run([model.train_op, model.loss], fd)
-# 			loss_track.append(l)
-
-# 			if verbose:
-# 				if batch == 0 or batch % batches_in_epoch == 0:
-# 					print('batch {}'.format(batch))
-# 					print('  minibatch loss: {}'.format(session.run(model.loss, fd)))
-# 					for i, (e_in, dt_pred) in enumerate(zip(
-# 							fd[model.encoder_inputs].T,
-# 							session.run(model.decoder_prediction_train, fd).T
-# 						)):
-# 						print('  sample {}:'.format(i + 1))
-# 						print('    enc input           > {}'.format(e_in))
-# 						print('    dec train predicted > {}'.format(dt_pred))
-# 						if i >= 2:
-# 							break
-# 					print()
-# 	except KeyboardInterrupt:
-# 		print('training interrupted')
-
-# 	return loss_track
+	model = Seq2SeqModel(**args)
+	return model
 
 def train(session, model, train_set, dev_set, batch_size=100):
 
@@ -539,6 +486,22 @@ def get_batch(cur_batch, batch_size):
 
 	return encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths
 
+def prepare_inf_input(cur_batch, batch_size):
+	enc_inputs_lengths = [len(seq) for seq in cur_batch]
+	encoder_max_length = max(enc_inputs_lengths)
+
+	# time major arrays, initialized with PAD values
+	encoder_inputs = np.ones(shape=[encoder_max_length, batch_size], dtype=np.int32) * data_utils.PAD_ID
+
+	# for each encoder input in current batch
+	for i, enc_inp in enumerate(cur_batch):
+
+		# for each word in encoder input
+		for j, word in enumerate( list( reversed(enc_inp) ) ):
+			encoder_inputs[j, i] = word
+
+	return encoder_inputs, enc_inputs_lengths
+
 def read_conversation_data(data_path,vocabulary_path):
 	print("In read_conversation_data")
 	counter  = 0
@@ -588,8 +551,6 @@ def read_conversation_data(data_path,vocabulary_path):
 
 if __name__ == '__main__':
 
-	tracks = {}
-	print("Training started")
 	data_path         = FLAGS.data_path
 	dev_data          = FLAGS.dev_data
 	vocab_path        = FLAGS.vocab_path
@@ -601,47 +562,124 @@ if __name__ == '__main__':
 	keep_prob         = FLAGS.keep_prob
 
 
-	data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
-	train_set, train_bucket_lengths,_ = read_conversation_data(data_path, vocab_path)
-	dev_set, dev_bucket_lengths,_     = read_conversation_data(dev_data , vocab_path)
+	# conversation with model
+	if 'test' in sys.argv:
 
-	print("train_bucket_lengths")
-	print(train_bucket_lengths)
+		vocab, rev_vocab = data_utils.initialize_vocabulary(FLAGS.vocab_path)
 
-	print("dev_bucket_lengths")
-	print(dev_bucket_lengths)
+		tf.reset_default_graph()
 
+		with tf.Session() as session:
 
-	tf.reset_default_graph()
+			def encoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
 
-	with tf.Session() as session:
-		def encoder_single_cell():
-			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+			def decoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
 
-		def decoder_single_cell():
-			return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
-
-		if num_layers > 1:
-			encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
-			decoder_cell = MultiRNNCell([decoder_single_cell() for _ in range(num_layers)])
-		else:
-			encoder_cell = encoder_single_cell()
-			decoder_cell = decoder_single_cell()
+			if num_layers > 1:
+				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
+				decoder_cell = MultiRNNCell([decoder_single_cell() for _ in range(num_layers)])
+			else:
+				encoder_cell = encoder_single_cell()
+				decoder_cell = decoder_single_cell()
 
 
-		model = make_seq2seq_model(encoder_cell=encoder_cell,
-				decoder_cell=decoder_cell,
-				vocab_size=FLAGS.vocab_size,
-				embedding_size=embedding_size,
-				learning_rate=learning_rate,
-				max_gradient_norm=max_gradient_norm,
-				attention=True,
-				bidirectional=True,
-				debug=False)
+			model = make_seq2seq_model(encoder_cell=encoder_cell,
+					decoder_cell=decoder_cell,
+					vocab_size=FLAGS.vocab_size,
+					embedding_size=embedding_size,
+					learning_rate=learning_rate,
+					max_gradient_norm=max_gradient_norm,
+					attention=True,
+					bidirectional=True,
+					debug=False)
 
-		session.run(tf.global_variables_initializer())
-		#loss_track_attention = train_on_copy_task(session, model)
-		loss_track_attention = train(session, model, train_set, dev_set, batch_size=batch_size)
+			ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+			if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
+				print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+				model.saver.restore(session, ckpt.model_checkpoint_path)
+			else:
+				print("Created model with fresh parameters.")
+				session.run(tf.global_variables_initializer())
+
+
+
+			sys.stdout.write("> ")
+			sys.stdout.flush()
+			sentence = sys.stdin.readline()
+
+			while sentence:
+
+				token_ids = data_utils.sentence_to_token_ids(sentence, vocab)
+				print(token_ids)
+			
+				encoder_inputs, enc_inputs_lengths = prepare_inf_input([token_ids], 1)
+				# print(encoder_inputs)
+				# print(enc_inputs_lengths)
+				fd = model.make_inference_inputs(encoder_inputs, enc_inputs_lengths)
+
+				inf_outs = session.run(model.decoder_prediction_inference, fd)
+
+				reply = []
+				for out in np.transpose(inf_outs):
+					
+					reply.append(data_utils.token_ids_to_sentence(out, rev_vocab))
+
+				print(reply)
+
+				sys.stdout.write("> ")
+				sys.stdout.flush()
+				sentence = sys.stdin.readline()
+
+
+	# training the model
+	else:
+
+		tracks = {}
+		print("Training started")
+
+		data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
+		train_set, train_bucket_lengths,_ = read_conversation_data(data_path, vocab_path)
+		dev_set, dev_bucket_lengths,_     = read_conversation_data(dev_data , vocab_path)
+
+		print("train_bucket_lengths")
+		print(train_bucket_lengths)
+
+		print("dev_bucket_lengths")
+		print(dev_bucket_lengths)
+
+
+		tf.reset_default_graph()
+
+		with tf.Session() as session:
+			def encoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+
+			def decoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=keep_prob) 
+
+			if num_layers > 1:
+				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
+				decoder_cell = MultiRNNCell([decoder_single_cell() for _ in range(num_layers)])
+			else:
+				encoder_cell = encoder_single_cell()
+				decoder_cell = decoder_single_cell()
+
+
+			model = make_seq2seq_model(encoder_cell=encoder_cell,
+					decoder_cell=decoder_cell,
+					vocab_size=FLAGS.vocab_size,
+					embedding_size=embedding_size,
+					learning_rate=learning_rate,
+					max_gradient_norm=max_gradient_norm,
+					attention=True,
+					bidirectional=True,
+					debug=False)
+		
+			session.run(tf.global_variables_initializer())
+			#loss_track_attention = train_on_copy_task(session, model)
+			loss_track_attention = train(session, model, train_set, dev_set, batch_size=batch_size)
 
 
 

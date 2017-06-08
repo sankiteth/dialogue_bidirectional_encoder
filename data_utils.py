@@ -90,6 +90,10 @@ def sentence_to_token_ids(sentence, vocabulary):
   words = sentence.strip().split()
   return [vocabulary.get(w, UNK_ID) for w in words]
 
+def token_ids_to_sentence(token_ids, rev_vocab):
+  sentence = [rev_vocab[token_id] for token_id in token_ids if token_id != 0]
+  return " ".join(sentence)
+
 def batch(inputs, max_sequence_length=None):
     
     sequence_lengths = [len(seq) for seq in inputs]
