@@ -21,10 +21,10 @@ tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate."
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size"          , 100   , "Number of dimensions in embedding space.")
 tf.app.flags.DEFINE_integer("keep_prob"               , 0.5  , "input_keep_prob for a single RNN cell.")
-tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 tf.app.flags.DEFINE_integer("max_inf_target_len"      , 100   , "Max length of targets in the inference")
@@ -415,25 +415,25 @@ def train(session, model, train_set, dev_set, batch_size=100):
 		sys.stdout.flush()
 
 		print("Stats on dev set:\n")
+		sys.stdout.flush()
+
+		for bucket_id in range(len(_buckets)):
+			dev_loss = []
+			
+			cur_dev_set = dev_set[bucket_id]
+
+			for b in range( len(cur_dev_set)//batch_size ):
+
+				cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
+
+				encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
+
+				fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
+				l = session.run(model.loss, fd)
+				dev_loss.append(l)
+
+			print("Average loss for bucket{0} on dev_set={1}".format(bucket_id, sum(dev_loss)/len(dev_loss) ))
 			sys.stdout.flush()
-
-			for bucket_id in range(len(_buckets)):
-				dev_loss = []
-				
-				cur_dev_set = dev_set[bucket_id]
-
-				for b in range( len(cur_dev_set)//batch_size ):
-
-					cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
-
-					encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
-
-					fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-					l = session.run(model.loss, fd)
-					dev_loss.append(l)
-
-				print("Average loss for bucket{0} on dev_set={1}".format(bucket_id, sum(dev_loss)/len(dev_loss) ))
-				sys.stdout.flush()
 	
 
 		model.save(session, epoch)
@@ -483,6 +483,50 @@ def prepare_inf_input(cur_batch, batch_size):
 
 	return encoder_inputs, enc_inputs_lengths
 
+def generate_test_result(session, model, dev_set):
+	input("Enter!")
+	# iterating sample by sample
+	for i in range(0, len(dev_set), 2):
+
+		sample_1 = dev_set[i]
+		sample_2 = dev_set[i+1]
+
+		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch([sample_1, sample_2], batch_size=2)
+		fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
+
+		model.soft_out = tf.nn.softmax(model.decoder_logits_inference, dim=-1, name='softmax_inference_logits')
+		preds, soft_out = session.run([model.decoder_prediction_inference, model.soft_out], fd)
+
+		#decoder_logits_inference = [time, batch_size, vocab_size]
+
+		log_sentence_probs = [0.0, 0.0]
+
+
+		# calculate probability of the 2 sentences returned as prediction
+		# 2 predictions for each turn
+		for b in [0,1]:
+
+			cur_sent = preds[:, b]
+			num = 0
+			for time in range(len(cur_sent)):
+
+				word = cur_sent[time]
+				log_sentence_probs[b] += math.log(soft_out[time, b, word], 2)
+				num += 1
+				
+				if word == data_utils.EOS_ID:
+					break		
+
+			log_sentence_probs[b] /= num
+
+		reply = []
+		for b, pred in enumerate(np.transpose(preds)): # preds = [time, batch_size]
+			
+			reply.append(data_utils.token_ids_to_sentence(pred, rev_vocab))
+
+			print(reply[b])
+			print("perplexity={0}".format( math.pow( 2, -1*log_sentence_probs[b] ) ))
+
 def read_conversation_data(data_path,vocabulary_path):
 	print("In read_conversation_data")
 	counter  = 0
@@ -529,6 +573,40 @@ def read_conversation_data(data_path,vocabulary_path):
 
 	return data_set, bucket_lengths, counter
 
+def read_dev_set(dev_set_path,vocabulary_path):
+	print("In read_dev_set")
+	counter  = 0
+	vocab, _ = data_utils.initialize_vocabulary(vocabulary_path)
+	print("vocab_length={0}".format(len(vocab)))
+
+	data_set = []
+
+	with gfile.GFile(dev_set_path, mode="r") as fi:
+		for line in fi.readlines():
+			counter += 1
+			if counter % 50000 == 0:
+				print("reading data line %d" % counter)
+
+			entities = line.split("\t")
+
+			if len(entities) == 3:
+				source_1 = entities[0].strip()
+				target_1 = entities[1].strip()
+
+				source_2 = entities[1].strip()
+				target_2 = entities[2].strip()
+
+				source_1_ids = [int(x) for x in data_utils.sentence_to_token_ids(source_1,vocab)]
+				target_1_ids = [int(x) for x in data_utils.sentence_to_token_ids(target_1,vocab)]
+
+				source_2_ids = [int(x) for x in data_utils.sentence_to_token_ids(source_2,vocab)]
+				target_2_ids = [int(x) for x in data_utils.sentence_to_token_ids(target_2,vocab)]
+
+				data_set.append([source_1_ids, target_1_ids])
+				data_set.append([source_2_ids, target_2_ids])
+
+	return data_set
+
 
 if __name__ == '__main__':
 
@@ -541,11 +619,12 @@ if __name__ == '__main__':
 	max_gradient_norm = FLAGS.max_gradient_norm
 	embedding_size    = FLAGS.embedding_size
 
-	# conversation with model
+	# running test on dev set
 	if 'test' in sys.argv:
 
 		vocab, rev_vocab = data_utils.initialize_vocabulary(FLAGS.vocab_path)
 
+		dev_set = read_dev_set(dev_data , vocab_path)
 		tf.reset_default_graph()
 
 		with tf.Session() as session:
@@ -556,10 +635,10 @@ if __name__ == '__main__':
 						)
 
 			def encoder_single_cell():
-				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob ) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob ) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -575,8 +654,58 @@ if __name__ == '__main__':
 					embedding_size=embedding_size,
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
-					attention=False,
-					bidirectional=False,
+					attention=True,
+					bidirectional=True,
+					debug=False)
+
+
+			try:
+				print("Reading model parameters from {0}".format("./train_dir/epoch_15/dialogue_epoch_15.ckpt"))
+				model.saver.restore(session, "./train_dir/epoch_15/dialogue_epoch_15.ckpt")
+
+			except:
+				print("Trained model not found. Exiting!")
+				sys.exit()
+
+
+			generate_test_result(session, model, dev_set)
+
+	# conversation with model
+	elif 'conv' in sys.argv:
+
+		vocab, rev_vocab = data_utils.initialize_vocabulary(FLAGS.vocab_path)
+
+		tf.reset_default_graph()
+
+		with tf.Session() as session:
+
+			_keep_prob = tf.placeholder(
+							dtype=tf.float32,
+							name='keep_prob',
+						)
+
+			def encoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+
+			def decoder_single_cell():
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+
+			if num_layers > 1:
+				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
+				decoder_cell = MultiRNNCell([decoder_single_cell() for _ in range(num_layers)])
+			else:
+				encoder_cell = encoder_single_cell()
+				decoder_cell = decoder_single_cell()
+
+
+			model = make_seq2seq_model(encoder_cell=encoder_cell,
+					decoder_cell=decoder_cell,
+					vocab_size=FLAGS.vocab_size,
+					embedding_size=embedding_size,
+					learning_rate=learning_rate,
+					max_gradient_norm=max_gradient_norm,
+					attention=True,
+					bidirectional=True,
 					debug=False)
 
 
@@ -594,8 +723,8 @@ if __name__ == '__main__':
 			# 	sys.exit()
 
 			try:
-				print("Reading model parameters from {0}".format("./train_dir/epoch_12/dialogue_epoch_12.ckpt"))
-				model.saver.restore(session, "./train_dir/epoch_12/dialogue_epoch_12.ckpt")
+				print("Reading model parameters from {0}".format("./train_dir/epoch_13/dialogue_epoch_13.ckpt"))
+				model.saver.restore(session, "./train_dir/epoch_13/dialogue_epoch_13.ckpt")
 
 			except:
 				print("Trained model not found. Exiting!")
@@ -658,10 +787,10 @@ if __name__ == '__main__':
 						)
 
 			def encoder_single_cell():
-				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -677,81 +806,9 @@ if __name__ == '__main__':
 					embedding_size=embedding_size,
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
-					attention=False,
-					bidirectional=False,
+					attention=True,
+					bidirectional=True,
 					debug=False)
 		
 			session.run(tf.global_variables_initializer())
-			#loss_track_attention = train_on_copy_task(session, model)
 			loss_track_attention = train(session, model, train_set, dev_set, batch_size=batch_size)
-
-
-
-
-
-
-
-
-
-
-
-
-	# import sys
-
-	# if 'fw-debug' in sys.argv:
-	#     tf.reset_default_graph()
-	#     with tf.Session() as session:
-	#         model = make_seq2seq_model(debug=True)
-	#         session.run(tf.global_variables_initializer())
-	#         session.run(model.decoder_prediction_train)
-	#         session.run(model.decoder_prediction_train)
-
-	# elif 'fw-inf' in sys.argv:
-	#     tf.reset_default_graph()
-	#     with tf.Session() as session:
-	#         model = make_seq2seq_model()
-	#         session.run(tf.global_variables_initializer())
-	#         fd = model.make_inference_inputs([[5, 4, 6, 7], [6, 6]])
-	#         inf_out = session.run(model.decoder_prediction_inference, fd)
-	#         print(inf_out)
-
-	# elif 'train' in sys.argv:
-	#     tracks = {}
-
-	#     print("Training")
-		# data_path  = FLAGS.data_path
-		# dev_data   = FLAGS.dev_data
-		# vocab_path = FLAGS.vocab_path
-
-		# create_vocabulary(vocab_path, data_path, FLAGS.en_vocab_size)
-
-		# train_set = read_conversation_data(data_path, vocab_path, FLAGS.max_train_data_size)
-	# 	dev_set   = read_conversation_data(dev_data , vocab_path, FLAGS.max_train_data_size)
-
-	#     tf.reset_default_graph()
-
-	#     with tf.Session() as session:
-	#         model = make_seq2seq_model(attention=True)
-	#         session.run(tf.global_variables_initializer())
-	#         loss_track_attention = train_on_copy_task(session, model)
-
-	#     tf.reset_default_graph()
-
-	#     with tf.Session() as session:
-	#         model = make_seq2seq_model(attention=False)
-	#         session.run(tf.global_variables_initializer())
-	#         loss_track_no_attention = train_on_copy_task(session, model)
-
-	#     import matplotlib.pyplot as plt
-	#     plt.plot(loss_track)
-	#     print('loss {:.4f} after {} examples (batch_size={})'.format(loss_track[-1], len(loss_track)*batch_size, batch_size))
-
-	# else:
-	#     tf.reset_default_graph()
-	#     session = tf.InteractiveSession()
-	#     model = make_seq2seq_model(debug=False)
-	#     session.run(tf.global_variables_initializer())
-
-	#     fd = model.make_inference_inputs([[5, 4, 6, 7], [6, 6]])
-
-	#     inf_out = session.run(model.decoder_prediction_inference, fd)
