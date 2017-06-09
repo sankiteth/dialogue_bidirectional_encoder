@@ -194,10 +194,10 @@ class Seq2SeqModel():
 					initializer=initializer,
 					dtype=tf.float32)
 
-				self.encoder_inputs_embedded = tf.nn.embedding_lookup(
+			self.encoder_inputs_embedded = tf.nn.embedding_lookup(
 					self.embedding_matrix, self.encoder_inputs)
 
-				self.decoder_train_inputs_embedded = tf.nn.embedding_lookup(
+			self.decoder_train_inputs_embedded = tf.nn.embedding_lookup(
 					self.embedding_matrix, self.decoder_train_inputs)
 
 	def _init_simple_encoder(self):
