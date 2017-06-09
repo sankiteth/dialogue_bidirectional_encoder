@@ -39,13 +39,6 @@ FLAGS = tf.app.flags.FLAGS
 _buckets = [(5, 10), (10, 15), (20, 25), (40, 50), (100, 100)]
 
 class Seq2SeqModel():
-	"""Seq2Seq model usign blocks from new `tf.contrib.seq2seq`.
-	Requires TF 1.0.0-alpha"""
-
-	PAD = 0
-	EOS = 1
-	GO  = 2
-	UNK = 3
 
 	def __init__(self, encoder_cell, decoder_cell, vocab_size, embedding_size, learning_rate, max_gradient_norm,
 				num_samples=512,
@@ -126,9 +119,8 @@ class Seq2SeqModel():
 		with tf.name_scope('DecoderTrainFeeds'):
 			sequence_size, batch_size = tf.unstack(tf.shape(self.decoder_targets))
 
-			GO_SLICE  = tf.ones([1, batch_size], dtype=tf.int32) * self.GO
-			EOS_SLICE = tf.ones([1, batch_size], dtype=tf.int32) * self.EOS
-			PAD_SLICE = tf.ones([1, batch_size], dtype=tf.int32) * self.PAD
+			GO_SLICE  = tf.ones([1, batch_size], dtype=tf.int32) * data_utils.GO_ID
+			PAD_SLICE = tf.ones([1, batch_size], dtype=tf.int32) * data_utils.PAD_ID
 
 			self.decoder_train_inputs = tf.concat([GO_SLICE, self.decoder_targets], axis=0)
 			self.decoder_train_length = self.decoder_targets_length + 1
@@ -140,7 +132,7 @@ class Seq2SeqModel():
 			# [batch_size, max_length+1]
 			decoder_train_targets_eos_mask = tf.one_hot(self.decoder_train_length - 1,
 														decoder_train_targets_seq_len,
-														on_value=self.EOS, off_value=self.PAD,
+														on_value=data_utils.EOS_ID, off_value=data_utils.EOS_ID,
 														dtype=tf.int32)
 
 			# [max_length+1, batch_size]
@@ -155,11 +147,6 @@ class Seq2SeqModel():
 			# mask to ignore PADs in sequences within the batch while calculating losses
 			self.loss_weights = tf.transpose( tf.sign(tf.abs(self.decoder_train_targets)) )
 			self.loss_weights = tf.cast(self.loss_weights, dtype=tf.float32, name="loss_weights")
-
-			# self.loss_weights = tf.ones([
-			# 	batch_size,
-			# 	tf.reduce_max(self.decoder_train_length)
-			# ], dtype=tf.float32, name="loss_weights")
 
 	def _init_embeddings(self):
 
@@ -225,13 +212,6 @@ class Seq2SeqModel():
 				)
 
 
-			# encoder_fw_outputs=[?, ?, ], encoder_fw_state=[?,32]
-			# print(type(encoder_fw_outputs))
-			# print(encoder_fw_outputs.get_shape())
-			# print(len(encoder_fw_state))
-			# print(encoder_fw_state[0].get_shape())
-
-
 			#self.encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs), 2)
 			self.encoder_outputs = encoder_fw_outputs
 
@@ -259,8 +239,8 @@ class Seq2SeqModel():
 					output_fn=output_fn,
 					encoder_state=self.encoder_state,
 					embeddings=self.embedding_matrix,
-					start_of_sequence_id=self.GO,
-					end_of_sequence_id=self.EOS,
+					start_of_sequence_id=data_utils.GO_ID,
+					end_of_sequence_id=data_utils.EOS_ID,
 					maximum_length=FLAGS.max_inf_target_len,
 					num_decoder_symbols=self.vocab_size,
 				)
@@ -297,9 +277,9 @@ class Seq2SeqModel():
 					attention_score_fn=attention_score_fn,
 					attention_construct_fn=attention_construct_fn,
 					embeddings=self.embedding_matrix,
-					start_of_sequence_id=self.GO,
-					end_of_sequence_id=self.EOS,
-					maximum_length= FLAGS.max_inf_target_len, #tf.reduce_max(self.encoder_inputs_length),
+					start_of_sequence_id=data_utils.GO_ID,
+					end_of_sequence_id=data_utils.EOS_ID,
+					maximum_length= FLAGS.max_inf_target_len,
 					num_decoder_symbols=self.vocab_size,
 				)
 
@@ -319,7 +299,6 @@ class Seq2SeqModel():
 			self.decoder_outputs_train = tf.nn.dropout(self.decoder_outputs_train, _keep_prob)
 
 			self.decoder_logits_train = output_fn(self.decoder_outputs_train)
-			#self.decoder_prediction_train = tf.argmax(self.decoder_logits_train, axis=-1, name='decoder_prediction_train')
 
 			# reusing the scope of training to use the same variables for inference
 			scope.reuse_variables()
@@ -392,8 +371,6 @@ def make_seq2seq_model(**kwargs):
 
 def train(session, model, train_set, dev_set, batch_size=100):
 
-	loss_track = []
-
 	indices = np.arange(len(_buckets))
 
 	for epoch in range(FLAGS.num_epochs):
@@ -422,7 +399,6 @@ def train(session, model, train_set, dev_set, batch_size=100):
 				_, l = session.run([model.train_op, model.loss], fd)
 				# print(l)
 				# input("Enter!")
-				# loss_track.append(l)
 
 			print("Bucket {0} finished".format(bucket_id))
 			sys.stdout.flush()
@@ -456,8 +432,6 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 		model.save(session, epoch)
 
-
-	return loss_track
 
 def get_batch(cur_batch, batch_size):
 
@@ -502,7 +476,7 @@ def prepare_inf_input(cur_batch, batch_size):
 	return encoder_inputs, enc_inputs_lengths
 
 def generate_test_result(session, model, dev_set):
-	
+
 	# iterating sample by sample
 	for i in range(0, len(dev_set), 2):
 
@@ -729,20 +703,6 @@ if __name__ == '__main__':
 					bidirectional=True,
 					debug=False)
 
-
-			# file_name = "dialogue_epoch_13.ckpt"
-			# model_path = os.path.join("./train_dir", file_name)
-
-			# ckpt = tf.train.get_checkpoint_state("./train_dir/", latest_filename=file_name)
-
-			# if ckpt and gfile.Exists(ckpt.model_checkpoint_path):
-			# 	print("Reading model parameters from {0}".format(model_path))
-			# 	model.saver.restore(session, "./train_dir/dialogue_epoch_13.ckpt")
-			# 	model.saver.restore(session, ckpt.model_checkpoint_path)
-			# else:
-			# 	print("Trained model not found. Exiting!")
-			# 	sys.exit()
-
 			try:
 				print("Reading model parameters from {0}".format("./train_dir/epoch_5/dialogue_epoch_5.ckpt"))
 				model.saver.restore(session, "./train_dir/epoch_5/dialogue_epoch_5.ckpt")
@@ -784,7 +744,6 @@ if __name__ == '__main__':
 	# training the model
 	else:
 
-		tracks = {}
 		print("Training started")
 
 		data_utils.create_vocabulary(vocab_path, data_path, FLAGS.vocab_size)
@@ -833,4 +792,4 @@ if __name__ == '__main__':
 					debug=False)
 		
 			session.run(tf.global_variables_initializer())
-			loss_track_attention = train(session, model, train_set, dev_set, batch_size=batch_size)
+			train(session, model, train_set, dev_set, batch_size=batch_size)
