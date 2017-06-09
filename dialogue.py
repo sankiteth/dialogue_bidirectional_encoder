@@ -409,10 +409,15 @@ def train(session, model, train_set, dev_set, batch_size=100):
 			print("Bucket {0} finished".format(bucket_id))
 			sys.stdout.flush()
 
-			print("Stats on dev set:\n")
+		end = time.time()
+		print("Epoch {0} finished".format(epoch))
+		print("Training time for epoch {0} = {1} mins".format(epoch, (end-start)/60))
+		sys.stdout.flush()
+
+		print("Stats on dev set:\n")
 			sys.stdout.flush()
 
-			for bucket_id in indices:
+			for bucket_id in range(len(_buckets)):
 				dev_loss = []
 				
 				cur_dev_set = dev_set[bucket_id]
@@ -429,32 +434,7 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 				print("Average loss for bucket{0} on dev_set={1}".format(bucket_id, sum(dev_loss)/len(dev_loss) ))
 				sys.stdout.flush()
-
-		end = time.time()
-		print("Epoch {0} finished".format(epoch))
-		print("Training time for epoch {0} = {1} mins".format(epoch, (end-start)/60))
-		sys.stdout.flush()
-		
-		# print("Stats on dev set:\n")
-		# sys.stdout.flush()
-
-		# dev_loss = []
-		# for bucket_id in indices:
-			
-		# 	cur_dev_set = dev_set[bucket_id]
-
-		# 	for b in range( len(cur_dev_set)//batch_size ):
-
-		# 		cur_batch = cur_dev_set[b*batch_size : b*batch_size + batch_size]
-
-		# 		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(cur_batch, batch_size)
-
-		# 		fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
-		# 		l = session.run(model.loss, fd)
-		# 		dev_loss.append(l)
-
-		# print("Average loss on dev_set={0}".format( sum(dev_loss)/len(dev_loss) ))
-		# sys.stdout.flush()
+	
 
 		model.save(session, epoch)
 
