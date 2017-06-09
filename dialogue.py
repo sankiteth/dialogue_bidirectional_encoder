@@ -700,6 +700,7 @@ if __name__ == '__main__':
 					max_gradient_norm=max_gradient_norm,
 					attention=False,
 					bidirectional=False,
+					pretrain=False,
 					debug=False)
 		
 			session.run(tf.global_variables_initializer())
