@@ -21,10 +21,10 @@ tf.app.flags.DEFINE_float("learning_rate"             , 0.001 , "Learning rate."
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99  , "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")
+tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 512  , "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size"          , 100   , "Number of dimensions in embedding space.")
 tf.app.flags.DEFINE_integer("keep_prob"               , 0.5  , "input_keep_prob for a single RNN cell.")
-tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("num_layers"              , 1     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 tf.app.flags.DEFINE_integer("max_inf_target_len"      , 100   , "Max length of targets in the inference")
@@ -595,8 +595,8 @@ if __name__ == '__main__':
 					embedding_size=embedding_size,
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
-					attention=True,
-					bidirectional=True,
+					attention=False,
+					bidirectional=False,
 					debug=False)
 
 
@@ -697,8 +697,8 @@ if __name__ == '__main__':
 					embedding_size=embedding_size,
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
-					attention=True,
-					bidirectional=True,
+					attention=False,
+					bidirectional=False,
 					debug=False)
 		
 			session.run(tf.global_variables_initializer())
