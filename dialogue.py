@@ -21,7 +21,7 @@ tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients 
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size"          , 100   , "Number of dimensions in embedding space.")
-tf.app.flags.DEFINE_integer("keep_prob"               , 0.5  , "input_keep_prob for a single RNN cell.")
+tf.app.flags.DEFINE_integer("keep_prob"               , 0.5   , "input_keep_prob for a single RNN cell.")
 tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -493,12 +493,17 @@ def generate_test_result(session, model, dev_set, vocabulary_path):
 	perps = []
 
 	# iterating sample by sample
-	for i in range(0, len(dev_set), 2):
+	for i in range(0, len(dev_set), 64):
 
-		sample_1 = dev_set[i]
-		sample_2 = dev_set[i+1]
+		if i%(64*10) == 0:
+			print(i)
+			sys.stdout.flush()
 
-		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch([sample_1, sample_2], batch_size=2)
+		# sample_1 = dev_set[i]
+		# sample_2 = dev_set[i+1]
+
+		#encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch([sample_1, sample_2], batch_size=2)
+		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(dev_set[i:i+64], batch_size=64)
 		fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 
 		model.soft_out = tf.nn.softmax(model.decoder_logits_inference, dim=-1, name='softmax_inference_logits')
@@ -506,34 +511,43 @@ def generate_test_result(session, model, dev_set, vocabulary_path):
 
 		#decoder_logits_inference = [time, batch_size, vocab_size]
 
-		log_sentence_probs = [0.0, 0.0]
-
 
 		# calculate probability of the 2 sentences returned as prediction
 		# 2 predictions for each turn
-		for b in [0,1]:
+		for k in range(0, 64, 2):
 
-			cur_sent = preds[:, b]
-			num = 0
-			for time in range(len(cur_sent)):
+			log_sentence_probs = [0.0, 0.0]
 
-				word = cur_sent[time]
-				if word != data_utils.PAD_ID:
-					log_sentence_probs[b] += math.log(soft_out[time, b, word], 2)
-					num += 1
-				
-				if word == data_utils.EOS_ID:
-					break		
+			for i,b in enumerate([k,k+1]):
 
-			log_sentence_probs[b] /= num
+				cur_sent = preds[:, b]
+				num = 0
+				for time in range(len(cur_sent)):
 
-		#print("{0:.3f} {1:.3f}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
+					word = cur_sent[time]
+					if word != data_utils.PAD_ID:
+						log_sentence_probs[i] += math.log(soft_out[time, b, word], 2)
+						num += 1
+					
+					if word == data_utils.EOS_ID:
+						break		
 
-		perps.append( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
+				log_sentence_probs[i] /= num
 
-		if i%100 == 0:
-			print(i)
-			sys.stdout.flush()
+			#print("{0:.3f} {1:.3f}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
+
+			perps.append( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
+
+			# with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
+			# 	fi.write( "".join(perps) )
+			# 	fi.flush()
+
+		with open("perplexities_group22.txt", "a") as fi:
+			fi.write( "".join(perps) )
+			fi.flush()
+
+
+		perp = []
 			
 		# with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
 		# 	fi.write( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
@@ -545,8 +559,8 @@ def generate_test_result(session, model, dev_set, vocabulary_path):
 		# 		with gfile.GFile("predictions.txt", mode="a") as fi:
 		# 			fi.write(data_utils.token_ids_to_sentence(pred, rev_vocab) + "\n\n")
 
-	with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
-		fi.write( "".join(perps) )
+	# with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
+	# 	fi.write( "".join(perps) )
 
 
 
