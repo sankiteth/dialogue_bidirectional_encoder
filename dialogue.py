@@ -496,13 +496,9 @@ def generate_test_result(session, model, dev_set, vocabulary_path):
 	for i in range(0, len(dev_set), 64):
 
 		if i%(64*10) == 0:
-			print(i)
+			print("{0} sentences done.".format(i))
 			sys.stdout.flush()
 
-		# sample_1 = dev_set[i]
-		# sample_2 = dev_set[i+1]
-
-		#encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch([sample_1, sample_2], batch_size=2)
 		encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths = get_batch(dev_set[i:i+64], batch_size=64)
 		fd = model.make_train_inputs(encoder_inputs, decoder_inputs, enc_inputs_lengths, dec_inputs_lengths)
 
@@ -534,13 +530,9 @@ def generate_test_result(session, model, dev_set, vocabulary_path):
 
 				log_sentence_probs[i] /= num
 
-			#print("{0:.3f} {1:.3f}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
 
 			perps.append( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
 
-			# with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
-			# 	fi.write( "".join(perps) )
-			# 	fi.flush()
 
 		with open("perplexities_group22.txt", "a") as fi:
 			fi.write( "".join(perps) )
