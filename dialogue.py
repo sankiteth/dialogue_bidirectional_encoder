@@ -44,9 +44,8 @@ class Seq2SeqModel():
 				num_samples=512,
 				bidirectional=True,
 				attention=False,
-				debug=False,
 				pretrain=False):
-		self.debug = debug
+
 		self.bidirectional = bidirectional
 		self.attention = attention
 
@@ -362,8 +361,7 @@ def make_seq2seq_model(**kwargs):
 				learning_rate=0.001,
 				max_gradient_norm=5.0,
 				attention=True,
-				bidirectional=True,
-				debug=False)
+				bidirectional=True)
 
 	args.update(kwargs)
 	model = Seq2SeqModel(**args)
@@ -650,8 +648,7 @@ if __name__ == '__main__':
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
 					attention=True,
-					bidirectional=True,
-					debug=False)
+					bidirectional=True)
 
 
 			try:
@@ -700,8 +697,7 @@ if __name__ == '__main__':
 					learning_rate=learning_rate,
 					max_gradient_norm=max_gradient_norm,
 					attention=True,
-					bidirectional=True,
-					debug=False)
+					bidirectional=True)
 
 			try:
 				print("Reading model parameters from {0}".format("./train_dir/epoch_5/dialogue_epoch_5.ckpt"))
@@ -788,8 +784,7 @@ if __name__ == '__main__':
 					max_gradient_norm=max_gradient_norm,
 					attention=True,
 					bidirectional=True,
-					pretrain=True,
-					debug=False)
+					pretrain=True)
 		
 			session.run(tf.global_variables_initializer())
 			train(session, model, train_set, dev_set, batch_size=batch_size)
