@@ -23,7 +23,7 @@ tf.app.flags.DEFINE_float("max_gradient_norm"         , 5.0   , "Clip gradients 
 tf.app.flags.DEFINE_integer("batch_size"              , 64    , "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("encoder_hidden_units"    , 1024  , "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size"          , 100   , "Number of dimensions in embedding space.")
-tf.app.flags.DEFINE_integer("keep_prob"               , 0.75  , "input_keep_prob for a single RNN cell.")
+tf.app.flags.DEFINE_integer("keep_prob"               , 0.5  , "input_keep_prob for a single RNN cell.")
 tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
@@ -576,10 +576,10 @@ if __name__ == '__main__':
 						)
 
 			def encoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -614,8 +614,8 @@ if __name__ == '__main__':
 			# 	sys.exit()
 
 			try:
-				print("Reading model parameters from {0}".format("./train_dir/dialogue_epoch_15.ckpt"))
-				model.saver.restore(session, "./train_dir/dialogue_epoch_15.ckpt")
+				print("Reading model parameters from {0}".format("./train_dir/epoch_12/dialogue_epoch_12.ckpt"))
+				model.saver.restore(session, "./train_dir/epoch_12/dialogue_epoch_12.ckpt")
 
 			except:
 				print("Trained model not found. Exiting!")
@@ -678,10 +678,10 @@ if __name__ == '__main__':
 						)
 
 			def encoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
