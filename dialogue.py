@@ -33,6 +33,8 @@ tf.app.flags.DEFINE_string("data_path" , "data/Training_Shuffled_Dataset.txt", "
 tf.app.flags.DEFINE_string("vocab_path", "data/Vocab_file.txt", "Data directory")#done
 tf.app.flags.DEFINE_string("dev_data"  , "data/Validation_Shuffled_Dataset.txt", "Data directory")#done
 tf.app.flags.DEFINE_string("train_dir" , "train_dir/", "Training directory.")#done
+tf.app.flags.DEFINE_string("embedding_file" , "./embeddings/wordembeddings-dim100.word2vec", "Embedding File")#todo
+
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -51,13 +53,16 @@ class Seq2SeqModel():
 				num_samples=512,
 				bidirectional=True,
 				attention=False,
-				debug=False):
+				debug=False,
+				pretrain=False):
 		self.debug = debug
 		self.bidirectional = bidirectional
 		self.attention = attention
 
 		self.vocab_size = vocab_size
 		self.embedding_size = embedding_size
+		self.pretrain = pretrain
+
 
 		self.learning_rate = learning_rate
 		self.max_gradient_norm = max_gradient_norm
@@ -73,7 +78,6 @@ class Seq2SeqModel():
 
 	@property
 	def decoder_hidden_units(self):
-		# @TODO: is this correct for LSTMStateTuple?
 		return self.decoder_cell.output_size
 
 	def _make_graph(self):
@@ -167,17 +171,33 @@ class Seq2SeqModel():
 			sqrt3 = math.sqrt(3)
 			initializer = tf.random_uniform_initializer(-sqrt3, sqrt3)
 
-			self.embedding_matrix = tf.get_variable(
-				name="embedding_matrix",
-				shape=[self.vocab_size, self.embedding_size],
-				initializer=initializer,
-				dtype=tf.float32)
+			if self.pretrain:
+				print("Loading pretrained embeddings...")
+				vocab, _ = data_utils.initialize_vocabulary(FLAGS.vocab_path)
+				embed_matrix_np = np.random.randn(self.vocab_size, self.embedding_size).astype(np.float32)
+				with open(FLAGS.embedding_file) as f:
+					f.readline() # header, junk
+					for line in f:
+						line = line.split()
+						word = line[0]
+						embed = [float(i) for i in line[1:]]
+						if word in vocab:
+							embed_matrix_np[vocab[word]] = embed
+
+				self.embedding_matrix = tf.Variable(embed_matrix_np)
+
+			else:
+				self.embedding_matrix = tf.get_variable(
+					name="embedding_matrix",
+					shape=[self.vocab_size, self.embedding_size],
+					initializer=initializer,
+					dtype=tf.float32)
 
 			self.encoder_inputs_embedded = tf.nn.embedding_lookup(
-				self.embedding_matrix, self.encoder_inputs)
+					self.embedding_matrix, self.encoder_inputs)
 
 			self.decoder_train_inputs_embedded = tf.nn.embedding_lookup(
-				self.embedding_matrix, self.decoder_train_inputs)
+					self.embedding_matrix, self.decoder_train_inputs)
 
 	def _init_simple_encoder(self):
 		with tf.variable_scope("Encoder") as scope:
@@ -419,7 +439,7 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 		for bucket_id in range(len(_buckets)):
 			dev_loss = []
-			
+
 			cur_dev_set = dev_set[bucket_id]
 
 			for b in range( len(cur_dev_set)//batch_size ):
@@ -808,6 +828,7 @@ if __name__ == '__main__':
 					max_gradient_norm=max_gradient_norm,
 					attention=True,
 					bidirectional=True,
+					pretrain=True,
 					debug=False)
 		
 			session.run(tf.global_variables_initializer())
