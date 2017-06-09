@@ -12,8 +12,6 @@ from tensorflow.contrib.layers import safe_embedding_lookup_sparse as embedding_
 from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell, MultiRNNCell, DropoutWrapper, BasicLSTMCell
 from tensorflow.python.platform import gfile
 
-import helpers
-
 import data_utils
 
 
@@ -504,7 +502,6 @@ def prepare_inf_input(cur_batch, batch_size):
 	return encoder_inputs, enc_inputs_lengths
 
 def generate_test_result(session, model, dev_set):
-	input("Enter!")
 	# iterating sample by sample
 	for i in range(0, len(dev_set), 2):
 
@@ -531,8 +528,9 @@ def generate_test_result(session, model, dev_set):
 			for time in range(len(cur_sent)):
 
 				word = cur_sent[time]
-				log_sentence_probs[b] += math.log(soft_out[time, b, word], 2)
-				num += 1
+				if word != data_utils.PAD_ID:
+					log_sentence_probs[b] += math.log(soft_out[time, b, word], 2)
+					num += 1
 				
 				if word == data_utils.EOS_ID:
 					break		
@@ -680,8 +678,8 @@ if __name__ == '__main__':
 
 
 			try:
-				print("Reading model parameters from {0}".format("./train_dir/epoch_15/dialogue_epoch_15.ckpt"))
-				model.saver.restore(session, "./train_dir/epoch_15/dialogue_epoch_15.ckpt")
+				print("Reading model parameters from {0}".format("./train_dir/epoch_5/dialogue_epoch_5.ckpt"))
+				model.saver.restore(session, "./train_dir/epoch_5/dialogue_epoch_5.ckpt")
 
 			except:
 				print("Trained model not found. Exiting!")
