@@ -502,6 +502,7 @@ def prepare_inf_input(cur_batch, batch_size):
 	return encoder_inputs, enc_inputs_lengths
 
 def generate_test_result(session, model, dev_set):
+	
 	# iterating sample by sample
 	for i in range(0, len(dev_set), 2):
 
@@ -537,13 +538,15 @@ def generate_test_result(session, model, dev_set):
 
 			log_sentence_probs[b] /= num
 
-		reply = []
-		for b, pred in enumerate(np.transpose(preds)): # preds = [time, batch_size]
-			
-			reply.append(data_utils.token_ids_to_sentence(pred, rev_vocab))
+		print("{0} {1}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
 
-			print(reply[b])
-			print("perplexity={0}".format( math.pow( 2, -1*log_sentence_probs[b] ) ))
+		# reply = []
+		# for b, pred in enumerate(np.transpose(preds)): # preds = [time, batch_size]
+			
+		# 	reply.append(data_utils.token_ids_to_sentence(pred, rev_vocab))
+
+		# 	print(reply[b])
+		# 	print("perplexity={0}".format( math.pow( 2, -1*log_sentence_probs[b] ) ))
 
 def read_conversation_data(data_path,vocabulary_path):
 	print("In read_conversation_data")
@@ -703,10 +706,10 @@ if __name__ == '__main__':
 						)
 
 			def encoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			def decoder_single_cell():
-				return DropoutWrapper( LSTMCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
+				return DropoutWrapper( GRUCell(FLAGS.encoder_hidden_units), input_keep_prob=_keep_prob) 
 
 			if num_layers > 1:
 				encoder_cell = MultiRNNCell([encoder_single_cell() for _ in range(num_layers)])
@@ -741,8 +744,8 @@ if __name__ == '__main__':
 			# 	sys.exit()
 
 			try:
-				print("Reading model parameters from {0}".format("./train_dir/epoch_13/dialogue_epoch_13.ckpt"))
-				model.saver.restore(session, "./train_dir/epoch_13/dialogue_epoch_13.ckpt")
+				print("Reading model parameters from {0}".format("./train_dir/epoch_5/dialogue_epoch_5.ckpt"))
+				model.saver.restore(session, "./train_dir/epoch_5/dialogue_epoch_5.ckpt")
 
 			except:
 				print("Trained model not found. Exiting!")
