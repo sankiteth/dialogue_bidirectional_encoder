@@ -1,4 +1,4 @@
-# Working with TF commit 24466c2e6d32621cd85f0a78d47df6eed2c5c5a6
+#!/usr/bin/env python
 
 import math
 import sys
@@ -26,6 +26,7 @@ tf.app.flags.DEFINE_integer("num_layers"              , 4     , "Number of layer
 tf.app.flags.DEFINE_integer("vocab_size"              , 5000  , "English vocabulary size.")
 tf.app.flags.DEFINE_integer("num_epochs"              , 20    , "Number of epochs to run")
 tf.app.flags.DEFINE_integer("max_inf_target_len"      , 100   , "Max length of targets in the inference")
+tf.app.flags.DEFINE_integer("output_pred"             , 1     , "write predicted outputs to a text file")
 
 tf.app.flags.DEFINE_string("data_path" , "data/Training_Shuffled_Dataset.txt", "Data directory")#done
 tf.app.flags.DEFINE_string("vocab_path", "data/Vocab_file.txt", "Data directory")#done
@@ -71,10 +72,8 @@ class Seq2SeqModel():
 		return self.decoder_cell.output_size
 
 	def _make_graph(self):
-		if self.debug:
-			self._init_debug_inputs()
-		else:
-			self._init_placeholders()
+
+		self._init_placeholders()
 
 		self._init_decoder_tensors_padding_masking()
 		self._init_embeddings()
@@ -430,7 +429,6 @@ def train(session, model, train_set, dev_set, batch_size=100):
 
 		model.save(session, epoch)
 
-
 def get_batch(cur_batch, batch_size):
 
 	# find max_length of encoder and decoder inputs in the current batch
@@ -473,7 +471,26 @@ def prepare_inf_input(cur_batch, batch_size):
 
 	return encoder_inputs, enc_inputs_lengths
 
-def generate_test_result(session, model, dev_set):
+def generate_test_result(session, model, dev_set, vocabulary_path):
+
+	print("Calculating perplexities")
+
+	try:
+		os.remove("perplexities_group22.txt")
+
+	except OSError:
+		pass
+
+	if FLAGS.output_pred == 1:
+		try:
+			os.remove("predictions.txt")
+
+		except OSError:
+			pass
+
+	vocab, rev_vocab = data_utils.initialize_vocabulary(vocabulary_path)
+
+	perps = []
 
 	# iterating sample by sample
 	for i in range(0, len(dev_set), 2):
@@ -510,20 +527,35 @@ def generate_test_result(session, model, dev_set):
 
 			log_sentence_probs[b] /= num
 
-		print("{0} {1}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
+		#print("{0:.3f} {1:.3f}".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ))
 
-		# reply = []
-		# for b, pred in enumerate(np.transpose(preds)): # preds = [time, batch_size]
+		perps.append( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
+
+		if i%100 == 0:
+			print(i)
+			sys.stdout.flush()
 			
-		# 	reply.append(data_utils.token_ids_to_sentence(pred, rev_vocab))
+		# with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
+		# 	fi.write( "{0:.3f} {1:.3f}\n".format( math.pow( 2, -1*log_sentence_probs[0]), math.pow( 2, -1*log_sentence_probs[1] ) ) )
 
-		# 	print(reply[b])
-		# 	print("perplexity={0}".format( math.pow( 2, -1*log_sentence_probs[b] ) ))
+
+		# if FLAGS.output_pred == 1:
+		# 	for b, pred in enumerate(np.transpose(preds)): # preds = [time, batch_size]
+
+		# 		with gfile.GFile("predictions.txt", mode="a") as fi:
+		# 			fi.write(data_utils.token_ids_to_sentence(pred, rev_vocab) + "\n\n")
+
+	with gfile.GFile("perplexities_group22.txt", mode="a") as fi:
+		fi.write( "".join(perps) )
+
+
+
+	print("perplexity calculation done!")
 
 def read_conversation_data(data_path,vocabulary_path):
 	print("In read_conversation_data")
 	counter  = 0
-	vocab, _ = data_utils.initialize_vocabulary(vocabulary_path)
+	vocab, rev_vocab = data_utils.initialize_vocabulary(vocabulary_path)
 	print("vocab_length={0}".format(len(vocab)))
 
 	data_set = [[] for _ in _buckets]
@@ -569,7 +601,7 @@ def read_conversation_data(data_path,vocabulary_path):
 def read_dev_set(dev_set_path,vocabulary_path):
 	print("In read_dev_set")
 	counter  = 0
-	vocab, _ = data_utils.initialize_vocabulary(vocabulary_path)
+	vocab, rev_vocab = data_utils.initialize_vocabulary(vocabulary_path)
 	print("vocab_length={0}".format(len(vocab)))
 
 	data_set = []
@@ -604,7 +636,7 @@ def read_dev_set(dev_set_path,vocabulary_path):
 if __name__ == '__main__':
 
 	data_path         = FLAGS.data_path
-	dev_data          = FLAGS.dev_data
+	#dev_data          = FLAGS.dev_data
 	vocab_path        = FLAGS.vocab_path
 	batch_size        = FLAGS.batch_size
 	num_layers        = FLAGS.num_layers
@@ -612,10 +644,20 @@ if __name__ == '__main__':
 	max_gradient_norm = FLAGS.max_gradient_norm
 	embedding_size    = FLAGS.embedding_size
 
+	print("params passed:")
+	if len(sys.argv) > 0:
+		print(sys.argv)
+	else:
+		print("None")
+
 	# running test on dev set
 	if 'test' in sys.argv:
 
-		vocab, rev_vocab = data_utils.initialize_vocabulary(FLAGS.vocab_path)
+		if len(sys.argv) > 2:
+			dev_data = sys.argv[2]
+
+		if len(sys.argv) > 3:
+			FLAGS.output_pred = int(sys.argv[3])
 
 		dev_set = read_dev_set(dev_data , vocab_path)
 		tf.reset_default_graph()
@@ -660,7 +702,7 @@ if __name__ == '__main__':
 				sys.exit()
 
 
-			generate_test_result(session, model, dev_set)
+			generate_test_result(session, model, dev_set, vocab_path)
 
 	# conversation with model
 	elif 'conv' in sys.argv:

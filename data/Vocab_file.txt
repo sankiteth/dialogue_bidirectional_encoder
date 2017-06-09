@@ -1,6 +1,6 @@
 _PAD
-_GO
 _EOS
+_GO
 _UNK
 .
 '
